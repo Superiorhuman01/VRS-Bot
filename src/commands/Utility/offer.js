@@ -35,6 +35,23 @@ export default {
         .setDMPermission(false),
 
     async execute(interaction, guildConfig, client) {
+        // ====================== YETKİ KONTROLÜ ======================
+        const allowedRoles = [
+            '1536331089943994378',
+            '1536331131882836051'
+        ];
+
+        const member = interaction.member;
+        const hasPermission = member.roles.cache.some(role => allowedRoles.includes(role.id));
+
+        if (!hasPermission) {
+            return interaction.reply({
+                content: '❌ You do not have permission to use this command.',
+                ephemeral: true
+            });
+        }
+        // ===========================================================
+
         const player = interaction.options.getUser('player');
         const team = interaction.options.getString('team');
         const position = interaction.options.getString('position');
