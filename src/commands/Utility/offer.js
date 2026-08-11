@@ -53,12 +53,33 @@ export default {
         // ==============================================================
 
         const player = interaction.options.getUser('player');
-        const teamRole = interaction.options.getRole('team'); // Artık rol
+        const teamRole = interaction.options.getRole('team');
         const position = interaction.options.getString('position');
         const region = interaction.options.getString('region');
         const manager = interaction.options.getUser('manager');
 
-        const teamName = teamRole.name; // Gösterim için isim
+        // ====================== BLACKLIST CHECK ======================
+        const blacklistedRoles = [
+            '1536071019612213338',
+            '1536326544971268146',
+            '1536076122909974719',
+            '1536076492688072714',
+            '1536326157346144280',
+            '1536419385063899300',
+            '1536076131600441396',
+            '1536325359912362066',
+            '1536325689525932156'
+        ];
+
+        if (blacklistedRoles.includes(teamRole.id)) {
+            return interaction.reply({
+                content: '❌ You cannot select this role as a team.',
+                ephemeral: true
+            });
+        }
+        // ==============================================================
+
+        const teamName = teamRole.name;
 
         // Confirmation embed
         const confirmEmbed = new EmbedBuilder()
@@ -119,14 +140,13 @@ export default {
             // ====================== COLLECTOR ======================
             const collector = dmMessage.createMessageComponentCollector({
                 componentType: ComponentType.Button,
-                time: 24 * 60 * 60 * 1000, // 24 hours
+                time: 24 * 60 * 60 * 1000,
                 filter: i => i.user.id === player.id
             });
 
             collector.on('collect', async (i) => {
                 const isAccept = i.customId.startsWith('offer_accept_');
 
-                // Disable buttons
                 const disabledRow = new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
                         .setCustomId('disabled_accept')
