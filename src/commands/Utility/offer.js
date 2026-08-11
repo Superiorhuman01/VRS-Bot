@@ -208,3 +208,60 @@ export default {
                 // Manager'a bildirim
                 try {
                     const resultEmbed = new EmbedBuilder()
+                        .setColor(isAccept ? 0x57F287 : 0xED4245)
+                        .setTitle(isAccept ? '✅ Offer Accepted' : '❌ Offer Declined')
+                        .setDescription(`${player} has ${isAccept ? '**accepted**' : '**declined**'} the offer from **${teamName}**.`)
+                        .addFields(
+                            { name: 'Position', value: position, inline: true },
+                            { name: 'Region', value: region, inline: true },
+                            { name: 'Manager', value: `${manager}`, inline: true }
+                        )
+                        .setFooter({ text: `VF • ${new Date().toLocaleString('en-GB')}` })
+                        .setTimestamp();
+
+                    await manager.send({ embeds: [resultEmbed] }).catch(() => {
+                        logger.warn('Could not send DM to manager', { managerId: manager.id });
+                    });
+
+                } catch (err) {
+                    logger.error('Offer result notification error', { error: err.message });
+                }
+
+                collector.stop();
+            });
+
+            collector.on('end', async (collected, reason) => {
+                if (reason === 'time' && collected.size === 0) {
+                    const expiredRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('expired')
+                            .setLabel('Expired')
+                            .setStyle(ButtonStyle.Secondary)
+                            .setDisabled(true)
+                    );
+
+                    const expiredEmbed = EmbedBuilder.from(offerEmbed)
+                        .setColor(0x95A5A6)
+                        .setTitle('⏰ Offer Expired')
+                        .setDescription(`**${teamName}** wants to add you to their squad!\n\nThis offer has expired.`);
+
+                    await dmMessage.edit({
+                        embeds: [expiredEmbed],
+                        components: [expiredRow]
+                    }).catch(() => {});
+                }
+            });
+
+        } catch (error) {
+            await interaction.followUp({
+                content: `❌ Could not send the offer because ${player} has DMs closed.`,
+                ephemeral: true
+            });
+
+            logger.warn('Failed to send offer DM', {
+                playerId: player.id,
+                error: error.message
+            });
+        }
+    },
+};
