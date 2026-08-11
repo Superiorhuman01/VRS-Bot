@@ -35,7 +35,7 @@ export default {
         .setDMPermission(false),
 
     async execute(interaction, guildConfig, client) {
-        // ====================== YETKİ KONTROLÜ ======================
+        // ====================== PERMISSION CHECK ======================
         const allowedRoles = [
             '1536331089943994378',
             '1536331131882836051'
@@ -50,7 +50,7 @@ export default {
                 ephemeral: true
             });
         }
-        // ===========================================================
+        // ==============================================================
 
         const player = interaction.options.getUser('player');
         const team = interaction.options.getString('team');
@@ -58,7 +58,7 @@ export default {
         const region = interaction.options.getString('region');
         const manager = interaction.options.getUser('manager');
 
-        // Confirmation embed for the command user
+        // Confirmation embed
         const confirmEmbed = new EmbedBuilder()
             .setColor(0x57F287)
             .setTitle('📨 Offer Sent')
@@ -72,7 +72,7 @@ export default {
 
         await interaction.reply({ embeds: [confirmEmbed], ephemeral: true });
 
-        // Offer embed that goes to the player
+        // Offer embed for the player
         const offerEmbed = new EmbedBuilder()
             .setColor(0x57F287)
             .setTitle('🤝 Contract Offer!')
@@ -88,7 +88,7 @@ export default {
             .setThumbnail(player.displayAvatarURL({ dynamic: true }))
             .setFooter({ text: `Offer • ${new Date().toLocaleString('en-GB')}` });
 
-        // Accept / Decline buttons
+        // Buttons
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`offer_accept_${interaction.id}`)
@@ -157,6 +157,36 @@ export default {
                     components: [disabledRow]
                 });
 
+                // ====================== PUBLIC ANNOUNCEMENT (ONLY ON ACCEPT) ======================
+                if (isAccept) {
+                    try {
+                        const announcementChannel = await client.channels.fetch('1536072163201785897');
+
+                        if (announcementChannel) {
+                            const announcementEmbed = new EmbedBuilder()
+                                .setColor(0x57F287)
+                                .setTitle('🏆 Contract Accepted!')
+                                .setDescription(`${player} has joined **${team}**`)
+                                .addFields(
+                                    { name: 'Position', value: position, inline: true },
+                                    { name: 'Region', value: region, inline: true },
+                                    { name: '\u200B', value: '\u200B', inline: true },
+                                    { name: 'Player', value: `${player}`, inline: true },
+                                    { name: 'Team', value: team, inline: true },
+                                    { name: 'Manager', value: `${manager}`, inline: true }
+                                )
+                                .setThumbnail(player.displayAvatarURL({ dynamic: true }))
+                                .setFooter({ text: `VF • ${new Date().toLocaleString('en-GB')}` })
+                                .setTimestamp();
+
+                            await announcementChannel.send({ embeds: [announcementEmbed] });
+                        }
+                    } catch (err) {
+                        logger.error('Failed to send announcement', { error: err.message });
+                    }
+                }
+                // ==================================================================================
+
                 // Notify the manager
                 try {
                     const resultEmbed = new EmbedBuilder()
@@ -184,7 +214,6 @@ export default {
 
             collector.on('end', async (collected, reason) => {
                 if (reason === 'time' && collected.size === 0) {
-                    // Time expired
                     const expiredRow = new ActionRowBuilder().addComponents(
                         new ButtonBuilder()
                             .setCustomId('expired')
@@ -206,7 +235,6 @@ export default {
             });
 
         } catch (error) {
-            // Player has DMs closed
             await interaction.followUp({
                 content: `❌ Could not send the offer because ${player} has DMs closed.`,
                 ephemeral: true
