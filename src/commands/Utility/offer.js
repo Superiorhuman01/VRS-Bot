@@ -1,25 +1,32 @@
-import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { 
+    SlashCommandBuilder, 
+    EmbedBuilder, 
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle,
+    ComponentType
+} from 'discord.js';
 import { logger } from '../../utils/logger.js';
 
 export default {
     data: new SlashCommandBuilder()
         .setName('offer')
-        .setDescription('Bir oyuncuya kontrat teklifi gönderir')
+        .setDescription('Send a contract offer to a player')
         .addUserOption(option =>
             option.setName('player')
-                .setDescription('Teklif edilecek oyuncu')
+                .setDescription('The player to send the offer to')
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('team')
-                .setDescription('Takım adı (örnek: Manchester United)')
+                .setDescription('Team name (example: Manchester United)')
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('position')
-                .setDescription('Pozisyon (CB, ST, CM, LW vs.)')
+                .setDescription('Position (CB, ST, CM, LW etc.)')
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('region')
-                .setDescription('Bölge (GMT, TR, EU vs.)')
+                .setDescription('Region (GMT, TR, EU etc.)')
                 .setRequired(true))
         .addUserOption(option =>
             option.setName('manager')
@@ -34,25 +41,25 @@ export default {
         const region = interaction.options.getString('region');
         const manager = interaction.options.getUser('manager');
 
-        // Komutu kullanan kişiye onay mesajı
+        // Confirmation embed for the command user
         const confirmEmbed = new EmbedBuilder()
             .setColor(0x57F287)
-            .setTitle('📨 Offer Gönderildi')
-            .setDescription(`${player} kullanıcısına **${team}** teklifi DM olarak gönderildi.`)
+            .setTitle('📨 Offer Sent')
+            .setDescription(`The offer for **${team}** has been sent to ${player} via DM.`)
             .addFields(
-                { name: 'Pozisyon', value: position, inline: true },
-                { name: 'Bölge', value: region, inline: true },
+                { name: 'Position', value: position, inline: true },
+                { name: 'Region', value: region, inline: true },
                 { name: 'Manager', value: `${manager}`, inline: true }
             )
-            .setFooter({ text: `VF • ${new Date().toLocaleString('tr-TR')}` });
+            .setFooter({ text: `VF • ${new Date().toLocaleString('en-GB')}` });
 
         await interaction.reply({ embeds: [confirmEmbed], ephemeral: true });
 
-        // Oyuncuya gidecek DM Embed'i
+        // Offer embed that goes to the player
         const offerEmbed = new EmbedBuilder()
             .setColor(0x57F287)
             .setTitle('🤝 Contract Offer!')
-            .setDescription(`**${team}** seni kadrosuna katmak istiyor!`)
+            .setDescription(`**${team}** wants to add you to their squad!`)
             .addFields(
                 { name: 'Position', value: position, inline: true },
                 { name: 'Region', value: region, inline: true },
@@ -62,23 +69,23 @@ export default {
                 { name: 'Manager', value: `${manager}`, inline: true }
             )
             .setThumbnail(player.displayAvatarURL({ dynamic: true }))
-            .setFooter({ text: `Teklif • ${new Date().toLocaleString('tr-TR')}` });
+            .setFooter({ text: `Offer • ${new Date().toLocaleString('en-GB')}` });
 
-        // Kabul / Red butonları
+        // Accept / Decline buttons
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`offer_accept_${interaction.id}`)
-                .setLabel('Kabul Et')
+                .setLabel('Accept')
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId(`offer_decline_${interaction.id}`)
-                .setLabel('Reddet')
+                .setLabel('Decline')
                 .setStyle(ButtonStyle.Danger)
         );
 
         try {
-            await player.send({
-                content: `Merhaba ${player}, sana bir kontrat teklifi geldi!`,
+            const dmMessage = await player.send({
+                content: `Hello ${player}, you have received a contract offer!`,
                 embeds: [offerEmbed],
                 components: [row]
             });
@@ -89,10 +96,102 @@ export default {
                 team,
                 guildId: interaction.guildId
             });
+
+            // ====================== COLLECTOR ======================
+            const collector = dmMessage.createMessageComponentCollector({
+                componentType: ComponentType.Button,
+                time: 24 * 60 * 60 * 1000, // 24 hours
+                filter: i => i.user.id === player.id
+            });
+
+            collector.on('collect', async (i) => {
+                const isAccept = i.customId.startsWith('offer_accept_');
+
+                // Disable buttons
+                const disabledRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('disabled_accept')
+                        .setLabel(isAccept ? '✅ Accepted' : 'Accept')
+                        .setStyle(ButtonStyle.Success)
+                        .setDisabled(true),
+                    new ButtonBuilder()
+                        .setCustomId('disabled_decline')
+                        .setLabel(!isAccept ? '❌ Declined' : 'Decline')
+                        .setStyle(ButtonStyle.Danger)
+                        .setDisabled(true)
+                );
+
+                const updatedEmbed = EmbedBuilder.from(offerEmbed);
+
+                if (isAccept) {
+                    updatedEmbed
+                        .setColor(0x57F287)
+                        .setTitle('✅ Contract Accepted!')
+                        .setDescription(`**${team}** wants to add you to their squad!\n\n**The player has accepted the offer.**`);
+                } else {
+                    updatedEmbed
+                        .setColor(0xED4245)
+                        .setTitle('❌ Contract Declined')
+                        .setDescription(`**${team}** wants to add you to their squad!\n\n**The player has declined the offer.**`);
+                }
+
+                await i.update({
+                    embeds: [updatedEmbed],
+                    components: [disabledRow]
+                });
+
+                // Notify the manager
+                try {
+                    const resultEmbed = new EmbedBuilder()
+                        .setColor(isAccept ? 0x57F287 : 0xED4245)
+                        .setTitle(isAccept ? '✅ Offer Accepted' : '❌ Offer Declined')
+                        .setDescription(`${player} has ${isAccept ? '**accepted**' : '**declined**'} the offer from **${team}**.`)
+                        .addFields(
+                            { name: 'Position', value: position, inline: true },
+                            { name: 'Region', value: region, inline: true },
+                            { name: 'Manager', value: `${manager}`, inline: true }
+                        )
+                        .setFooter({ text: `VF • ${new Date().toLocaleString('en-GB')}` })
+                        .setTimestamp();
+
+                    await manager.send({ embeds: [resultEmbed] }).catch(() => {
+                        logger.warn('Could not send DM to manager', { managerId: manager.id });
+                    });
+
+                } catch (err) {
+                    logger.error('Offer result notification error', { error: err.message });
+                }
+
+                collector.stop();
+            });
+
+            collector.on('end', async (collected, reason) => {
+                if (reason === 'time' && collected.size === 0) {
+                    // Time expired
+                    const expiredRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('expired')
+                            .setLabel('Expired')
+                            .setStyle(ButtonStyle.Secondary)
+                            .setDisabled(true)
+                    );
+
+                    const expiredEmbed = EmbedBuilder.from(offerEmbed)
+                        .setColor(0x95A5A6)
+                        .setTitle('⏰ Offer Expired')
+                        .setDescription(`**${team}** wants to add you to their squad!\n\nThis offer has expired.`);
+
+                    await dmMessage.edit({
+                        embeds: [expiredEmbed],
+                        components: [expiredRow]
+                    }).catch(() => {});
+                }
+            });
+
         } catch (error) {
-            // Oyuncunun DM'i kapalıysa
+            // Player has DMs closed
             await interaction.followUp({
-                content: `❌ ${player} kullanıcısının DM'leri kapalı olduğu için teklif gönderilemedi.`,
+                content: `❌ Could not send the offer because ${player} has DMs closed.`,
                 ephemeral: true
             });
 
