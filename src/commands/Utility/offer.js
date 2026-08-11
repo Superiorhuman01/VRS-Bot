@@ -16,9 +16,9 @@ export default {
             option.setName('player')
                 .setDescription('The player to send the offer to')
                 .setRequired(true))
-        .addStringOption(option =>
+        .addRoleOption(option =>
             option.setName('team')
-                .setDescription('Team name (example: Manchester United)')
+                .setDescription('Select the team role')
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('position')
@@ -53,16 +53,18 @@ export default {
         // ==============================================================
 
         const player = interaction.options.getUser('player');
-        const team = interaction.options.getString('team');
+        const teamRole = interaction.options.getRole('team'); // Artık rol
         const position = interaction.options.getString('position');
         const region = interaction.options.getString('region');
         const manager = interaction.options.getUser('manager');
+
+        const teamName = teamRole.name; // Gösterim için isim
 
         // Confirmation embed
         const confirmEmbed = new EmbedBuilder()
             .setColor(0x57F287)
             .setTitle('📨 Offer Sent')
-            .setDescription(`The offer for **${team}** has been sent to ${player} via DM.`)
+            .setDescription(`The offer for **${teamName}** has been sent to ${player} via DM.`)
             .addFields(
                 { name: 'Position', value: position, inline: true },
                 { name: 'Region', value: region, inline: true },
@@ -76,13 +78,13 @@ export default {
         const offerEmbed = new EmbedBuilder()
             .setColor(0x57F287)
             .setTitle('🤝 Contract Offer!')
-            .setDescription(`**${team}** wants to add you to their squad!`)
+            .setDescription(`**${teamName}** wants to add you to their squad!`)
             .addFields(
                 { name: 'Position', value: position, inline: true },
                 { name: 'Region', value: region, inline: true },
                 { name: '\u200B', value: '\u200B', inline: true },
                 { name: 'Player', value: `${player}`, inline: true },
-                { name: 'Team', value: team, inline: true },
+                { name: 'Team', value: `${teamRole}`, inline: true },
                 { name: 'Manager', value: `${manager}`, inline: true }
             )
             .setThumbnail(player.displayAvatarURL({ dynamic: true }))
@@ -110,7 +112,7 @@ export default {
             logger.info('Offer DM sent successfully', {
                 from: interaction.user.id,
                 to: player.id,
-                team,
+                team: teamName,
                 guildId: interaction.guildId
             });
 
@@ -144,12 +146,12 @@ export default {
                     updatedEmbed
                         .setColor(0x57F287)
                         .setTitle('✅ Contract Accepted!')
-                        .setDescription(`**${team}** wants to add you to their squad!\n\n**The player has accepted the offer.**`);
+                        .setDescription(`**${teamName}** wants to add you to their squad!\n\n**The player has accepted the offer.**`);
                 } else {
                     updatedEmbed
                         .setColor(0xED4245)
                         .setTitle('❌ Contract Declined')
-                        .setDescription(`**${team}** wants to add you to their squad!\n\n**The player has declined the offer.**`);
+                        .setDescription(`**${teamName}** wants to add you to their squad!\n\n**The player has declined the offer.**`);
                 }
 
                 await i.update({
@@ -157,22 +159,38 @@ export default {
                     components: [disabledRow]
                 });
 
-                // ====================== PUBLIC ANNOUNCEMENT (ONLY ON ACCEPT) ======================
+                // ====================== ACCEPT İŞLEMLERİ ======================
                 if (isAccept) {
                     try {
+                        // 1. Oyuncuya takım rolünü ver
+                        const guild = interaction.guild;
+                        const playerMember = await guild.members.fetch(player.id).catch(() => null);
+
+                        if (playerMember) {
+                            await playerMember.roles.add(teamRole.id);
+                            logger.info('Team role given to player', {
+                                playerId: player.id,
+                                roleId: teamRole.id,
+                                roleName: teamName
+                            });
+                        } else {
+                            logger.warn('Could not fetch player member to give role', { playerId: player.id });
+                        }
+
+                        // 2. Duyuru kanalına mesaj gönder
                         const announcementChannel = await client.channels.fetch('1536072163201785897');
 
                         if (announcementChannel) {
                             const announcementEmbed = new EmbedBuilder()
                                 .setColor(0x57F287)
                                 .setTitle('🏆 Contract Accepted!')
-                                .setDescription(`${player} has joined **${team}**`)
+                                .setDescription(`${player} has joined **${teamName}**`)
                                 .addFields(
                                     { name: 'Position', value: position, inline: true },
                                     { name: 'Region', value: region, inline: true },
                                     { name: '\u200B', value: '\u200B', inline: true },
                                     { name: 'Player', value: `${player}`, inline: true },
-                                    { name: 'Team', value: team, inline: true },
+                                    { name: 'Team', value: `${teamRole}`, inline: true },
                                     { name: 'Manager', value: `${manager}`, inline: true }
                                 )
                                 .setThumbnail(player.displayAvatarURL({ dynamic: true }))
@@ -182,68 +200,11 @@ export default {
                             await announcementChannel.send({ embeds: [announcementEmbed] });
                         }
                     } catch (err) {
-                        logger.error('Failed to send announcement', { error: err.message });
+                        logger.error('Failed during accept process (role or announcement)', { error: err.message });
                     }
                 }
-                // ==================================================================================
+                // ==============================================================
 
-                // Notify the manager
+                // Manager'a bildirim
                 try {
                     const resultEmbed = new EmbedBuilder()
-                        .setColor(isAccept ? 0x57F287 : 0xED4245)
-                        .setTitle(isAccept ? '✅ Offer Accepted' : '❌ Offer Declined')
-                        .setDescription(`${player} has ${isAccept ? '**accepted**' : '**declined**'} the offer from **${team}**.`)
-                        .addFields(
-                            { name: 'Position', value: position, inline: true },
-                            { name: 'Region', value: region, inline: true },
-                            { name: 'Manager', value: `${manager}`, inline: true }
-                        )
-                        .setFooter({ text: `VF • ${new Date().toLocaleString('en-GB')}` })
-                        .setTimestamp();
-
-                    await manager.send({ embeds: [resultEmbed] }).catch(() => {
-                        logger.warn('Could not send DM to manager', { managerId: manager.id });
-                    });
-
-                } catch (err) {
-                    logger.error('Offer result notification error', { error: err.message });
-                }
-
-                collector.stop();
-            });
-
-            collector.on('end', async (collected, reason) => {
-                if (reason === 'time' && collected.size === 0) {
-                    const expiredRow = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder()
-                            .setCustomId('expired')
-                            .setLabel('Expired')
-                            .setStyle(ButtonStyle.Secondary)
-                            .setDisabled(true)
-                    );
-
-                    const expiredEmbed = EmbedBuilder.from(offerEmbed)
-                        .setColor(0x95A5A6)
-                        .setTitle('⏰ Offer Expired')
-                        .setDescription(`**${team}** wants to add you to their squad!\n\nThis offer has expired.`);
-
-                    await dmMessage.edit({
-                        embeds: [expiredEmbed],
-                        components: [expiredRow]
-                    }).catch(() => {});
-                }
-            });
-
-        } catch (error) {
-            await interaction.followUp({
-                content: `❌ Could not send the offer because ${player} has DMs closed.`,
-                ephemeral: true
-            });
-
-            logger.warn('Failed to send offer DM', {
-                playerId: player.id,
-                error: error.message
-            });
-        }
-    },
-};
