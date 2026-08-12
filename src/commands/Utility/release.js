@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 
 // Komutu kullanabilecek roller
 const ALLOWED_ROLES = [
@@ -7,7 +7,7 @@ const ALLOWED_ROLES = [
   '1536331131882836051'
 ];
 
-// 16 Takım rolleri
+// Takım rolleri
 const TEAM_ROLES = [
   '1537060306935881728',
   '1536772729838243921',
@@ -25,6 +25,8 @@ const TEAM_ROLES = [
   '1537060848256819330',
   '1537060395057942548'
 ];
+
+const CONTRACT_CHANNEL_ID = '1536072163201785897';
 
 export default {
   data: new SlashCommandBuilder()
@@ -49,7 +51,7 @@ export default {
     const reason = interaction.options.getString('reason');
     const releaser = interaction.user;
 
-    // 1. Komutu kullanma yetkisi kontrolü
+    // Yetki kontrolü
     const hasPermission = member.roles.cache.some(role => ALLOWED_ROLES.includes(role.id));
     if (!hasPermission) {
       return interaction.reply({
@@ -58,9 +60,8 @@ export default {
       });
     }
 
-    // 2. Manager'ın sahip olduğu takım rolünü bul
+    // Manager'ın takım rolünü bul
     const managerTeamRole = member.roles.cache.find(role => TEAM_ROLES.includes(role.id));
-
     if (!managerTeamRole) {
       return interaction.reply({
         content: 'You do not have any team role.',
@@ -68,7 +69,7 @@ export default {
       });
     }
 
-    // 3. Oyuncuyu sunucudan çek
+    // Oyuncuyu çek
     const targetMember = await interaction.guild.members.fetch(player.id).catch(() => null);
     if (!targetMember) {
       return interaction.reply({
@@ -77,7 +78,7 @@ export default {
       });
     }
 
-    // 4. Oyuncuda aynı takım rolü var mı kontrol et
+    // Aynı takımda mı kontrol et
     if (!targetMember.roles.cache.has(managerTeamRole.id)) {
       return interaction.reply({
         content: `This player is not in your team (**${managerTeamRole.name}**).`,
@@ -85,7 +86,7 @@ export default {
       });
     }
 
-    // 5. Takım rolünü oyuncudan kaldır
+    // Rolü kaldır
     try {
       await targetMember.roles.remove(managerTeamRole.id);
     } catch (error) {
@@ -96,7 +97,7 @@ export default {
       });
     }
 
-    // 6. Embed gönder
+    // Embed oluştur
     const embed = new EmbedBuilder()
       .setColor(0xED4245)
       .setTitle('🔒 Player Released')
@@ -115,6 +116,35 @@ export default {
       })
       .setTimestamp();
 
+    // Komutu kullanan kişiye cevap
     await interaction.reply({ embeds: [embed] });
+
+    // Contract kanalına gönder
+    try {
+      const contractChannel = await interaction.guild.channels.fetch(CONTRACT_CHANNEL_ID);
+      if (contractChannel) {
+        await contractChannel.send({ embeds: [embed] });
+      }
+    } catch (error) {
+      console.error('Failed to send to contract channel:', error);
+    }
+
+    // Oyuncuya DM gönder
+    try {
+      const dmEmbed = new EmbedBuilder()
+        .setColor(0xED4245)
+        .setTitle('🔒 You have been released')
+        .setDescription(`You have been released from **${managerTeamRole.name}** by ${releaser}.`)
+        .addFields(
+          { name: 'Reason', value: reason, inline: false }
+        )
+        .setFooter({ text: 'VF' })
+        .setTimestamp();
+
+      await player.send({ embeds: [dmEmbed] });
+    } catch (error) {
+      // DM kapalıysa sessizce geç
+      console.log(`Could not DM ${player.tag}`);
+    }
   }
 };
