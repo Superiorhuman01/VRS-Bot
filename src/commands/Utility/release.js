@@ -28,6 +28,14 @@ const TEAM_ROLES = [
 
 const CONTRACT_CHANNEL_ID = '1536072163201785897';
 
+// Rol ID'leri
+const ADMIN_STAFF_ROLES = [
+  '1536076131600441396',
+  '1536326544971268146'
+];
+const MANAGER_ROLE = '1536331089943994378';
+const ASSISTANT_MANAGER_ROLE = '1536331131882836051';
+
 export default {
   data: new SlashCommandBuilder()
     .setName('release')
@@ -97,14 +105,25 @@ export default {
       });
     }
 
+    // Released by unvanını belirle
+    let roleTitle = 'Manager'; // varsayılan
+
+    if (member.roles.cache.some(role => ADMIN_STAFF_ROLES.includes(role.id))) {
+      roleTitle = 'Admin/Staff';
+    } else if (member.roles.cache.has(MANAGER_ROLE)) {
+      roleTitle = 'Manager';
+    } else if (member.roles.cache.has(ASSISTANT_MANAGER_ROLE)) {
+      roleTitle = 'Assistant Manager';
+    }
+
     // Embed oluştur
     const embed = new EmbedBuilder()
       .setColor(0xED4245)
       .setTitle('🔒 Player Released')
-      .setDescription(`**${player.username}** has been released by admin/staff`)
+      .setDescription(`**${player.username}** has been released by ${roleTitle.toLowerCase()}`)
       .addFields(
         { name: 'Player', value: `${player}`, inline: true },
-        { name: 'Released by', value: `${releaser} (Admin/Staff)`, inline: true },
+        { name: 'Released by', value: `${releaser} (${roleTitle})`, inline: true },
         { name: 'Reason', value: reason, inline: false },
         { name: 'Team', value: managerTeamRole.name, inline: true }
       )
@@ -134,7 +153,7 @@ export default {
       const dmEmbed = new EmbedBuilder()
         .setColor(0xED4245)
         .setTitle('🔒 You have been released')
-        .setDescription(`You have been released from **${managerTeamRole.name}** by ${releaser}.`)
+        .setDescription(`You have been released from **${managerTeamRole.name}** by ${releaser} (${roleTitle}).`)
         .addFields(
           { name: 'Reason', value: reason, inline: false }
         )
@@ -143,7 +162,6 @@ export default {
 
       await player.send({ embeds: [dmEmbed] });
     } catch (error) {
-      // DM kapalıysa sessizce geç
       console.log(`Could not DM ${player.tag}`);
     }
   }
